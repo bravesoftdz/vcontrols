@@ -1,5 +1,6 @@
 {
  Author: Dmitry Vaygant
+ Author: Alexey-T
 }
 unit VListBox;
 
