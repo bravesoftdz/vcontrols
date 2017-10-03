@@ -1,9 +1,9 @@
 object Form1: TForm1
-  Left = 331
+  Left = 274
   Height = 473
-  Top = 97
+  Top = 113
   Width = 817
-  HorzScrollBar.Page = 508
+  HorzScrollBar.Page = 590
   VertScrollBar.Page = 110
   AutoScroll = True
   Caption = 'Chart Viewer'
@@ -112,6 +112,17 @@ object Form1: TForm1
       Spacing = 1
       OnColorChanged = ColorButton1ColorChanged
     end
+    object CBAllowDrag: TCheckBox
+      Left = 508
+      Height = 25
+      Top = 4
+      Width = 78
+      Align = alLeft
+      BorderSpacing.Around = 4
+      Caption = 'Allow Drag'
+      OnChange = CBAllowDragChange
+      TabOrder = 6
+    end
   end
   object Panel2: TPanel
     Left = 0
@@ -164,10 +175,12 @@ object Form1: TForm1
     Top = 33
     Width = 632
     OnChartDraw = VChartControl1ChartDraw
-    OnAfterChartDraw = VChartControl1AfterChartDraw
+    OnCursorAMove = VChartControl1CursorAMove
+    OnCursorBMove = VChartControl1CursorBMove
+    OnCursorsDraw = VChartControl1CursorsDraw
     OnZoomRectDraw = VChartControl1ZoomRectDraw
-    OnCursorDraw = VChartControl1CursorDraw
-    OnCursorMove = VChartControl1CursorMove
+    OnGetDragPoint = VChartControl1GetDragPoint
+    OnMovePoint = VChartControl1MovePoint
     LeftAxisWidth = 0
     BottomAxisHeight = 0
     Align = alClient

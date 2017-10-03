@@ -30,8 +30,8 @@ object Form1: TForm1
     Width = 596
     AllowCursorB = False
     OnChartDraw = VChartControl1ChartDraw
+    OnCursorsDraw = VChartControl1CursorsDraw
     OnZoomRectDraw = VChartControl1ZoomRectDraw
-    OnCursorDraw = VChartControl1CursorDraw
     LeftAxisWidth = 0
     BottomAxisHeight = 0
     Align = alClient

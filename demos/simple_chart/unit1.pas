@@ -34,8 +34,10 @@ type
     procedure Timer1Timer(Sender: TObject);
     procedure VChartControl1ChartDraw(Sender: TObject; C: TCanvas;
       const AxisRect, ImageRect: TRect);
-    procedure VChartControl1CursorDraw(Sender: TObject; ACanvas: TCanvas;
-      ImageRect: TRect; isCursorA: boolean; X: integer);
+    procedure VChartControl1CursorsDraw(Sender: TObject; ACanvas: TCanvas;
+      ImageRect: TRect; aX, bX: integer);
+ //   procedure VChartControl1CursorDraw(Sender: TObject; ACanvas: TCanvas;
+ //     ImageRect: TRect; isCursorA: boolean; X: integer);
     procedure VChartControl1ZoomRectDraw(Sender: TObject; ACanvas: TCanvas;
       const ZoomRect: TRect);
   private
@@ -149,6 +151,35 @@ begin
   DrawSin;
 end;
 
+procedure TForm1.VChartControl1CursorsDraw(Sender: TObject; ACanvas: TCanvas;
+  ImageRect: TRect; aX, bX: integer);
+var
+  X0, Y: integer;
+begin
+  ACanvas.Pen.Width:=1;
+  ACanvas.Pen.Mode:=pmNotXor;
+  if VChartControl1.CursorA>VChartControl1.Extent.Left then
+  begin
+    X0:= VChartControl1.GraphToImageX(0);
+    ACanvas.Pen.Color:=clBlue;
+    ACanvas.Brush.Style:=bsClear;
+    Y:=VChartControl1.GraphToImageY(sin(VChartControl1.CursorA));
+    ACanvas.Rectangle(aX-5, Y-5, aX+6, Y+6);
+    ACanvas.Line(aX, Y, X0, Y);
+
+    ACanvas.Pen.Color:=clLime;
+    Y:=VChartControl1.GraphToImageY(cos(VChartControl1.CursorA));
+    ACanvas.Rectangle(aX-5, Y-5, aX+6, Y+6);
+    ACanvas.Line(aX, Y, X0, Y);
+  end;
+  ACanvas.Pen.Color:=clRed;
+  if (aX>=ImageRect.Left) and (ax<ImageRect.Right) then ACanvas.Line(aX, ImageRect.Top, aX, ImageRect.Bottom);
+  ACanvas.Pen.Color:=clBlue;
+  if (bX>=ImageRect.Left) and (bx<ImageRect.Right) then ACanvas.Line(bX, ImageRect.Top, bX, ImageRect.Bottom);
+  ACanvas.Pen.Mode:=pmCopy;
+end;
+
+{
 procedure TForm1.VChartControl1CursorDraw(Sender: TObject; ACanvas: TCanvas;
   ImageRect: TRect; isCursorA: boolean; X: integer);
 var
@@ -170,7 +201,7 @@ begin
   ACanvas.Line(X, ImageRect.Top, X, ImageRect.Bottom);
   ACanvas.Pen.Mode:=pmCopy;
 end;
-
+}
 procedure TForm1.VChartControl1ZoomRectDraw(Sender: TObject; ACanvas: TCanvas;
   const ZoomRect: TRect);
 begin

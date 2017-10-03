@@ -6,8 +6,9 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, StdCtrls,
-  Menus, VListBox, Types, LazFileUtils,
+  Menus, VListBox, Types, LazFileUtils, TAGraph,
   VChartControl, vtypes;
+
 
 type
 
@@ -17,6 +18,7 @@ type
     ButtonZoomIn: TButton;
     ButtonCloseAll2: TButton;
     ButtonFontSize: TButton;
+    CBAllowDrag: TCheckBox;
     CBLeftAxis: TCheckBox;
     CBBottomAxis: TCheckBox;
     CBAllowZoom: TCheckBox;
@@ -32,31 +34,35 @@ type
     procedure ButtonFontSizeClick(Sender: TObject);
     procedure ButtonZoomInClick(Sender: TObject);
     procedure ButtonCloseAll2Click(Sender: TObject);
+    procedure CBAllowDragChange(Sender: TObject);
     procedure CBBottomAxisChange(Sender: TObject);
     procedure CBAllowZoomChange(Sender: TObject);
     procedure CBLeftAxisChange(Sender: TObject);
-    procedure ColorButton1Click(Sender: TObject);
     procedure ColorButton1ColorChanged(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure Timer1Timer(Sender: TObject);
-    procedure VChartControl1AfterChartDraw(Sender: TObject; ACanvas: TCanvas;
-      const AxisRect, ImageRect: TRect);
     procedure VChartControl1ChartDraw(Sender: TObject; C: TCanvas;
       const AxisRect, ImageRect: TRect);
-    procedure VChartControl1CursorDraw(Sender: TObject; ACanvas: TCanvas;
-      ImageRect: TRect; isCursorA: boolean; X: integer);
-    procedure VChartControl1CursorMove(Sender: TObject; isCursorA: boolean);
+    procedure VChartControl1CursorAMove(Sender: TObject);
+    procedure VChartControl1CursorBMove(Sender: TObject);
+    procedure VChartControl1CursorsDraw(Sender: TObject; ACanvas: TCanvas;
+      ImageRect: TRect; aX, bX: integer);
+    procedure VChartControl1GetDragPoint(Sender: TObject; X, Y: integer;
+      var N: integer);
+    procedure VChartControl1MovePoint(Sender: TObject; Y: integer; N: integer);
     procedure VChartControl1ZoomRectDraw(Sender: TObject; ACanvas: TCanvas;
-      const ZoomRect: TRect);
+      ImageRect, ZoomRect: TRect);
     procedure VListBox1DblClick(Sender: TObject);
     procedure VListBox1DrawItem(Sender: TObject; C: TCanvas; AIndex: integer;
       const ARect: TRect);
     procedure VListBox1Selection(Sender: TObject);
   private
     SL: TStringList;
+    arp: array of TPoint;
     da: array of double;
     aTextHeight, aTextHeight2: integer;
+    procedure ShowCursorInfo;
     { private declarations }
   public
     { public declarations }
@@ -70,6 +76,9 @@ const
 implementation
 
 uses FileUtil,  math, LCLIntf;
+
+const
+  GrabRadius = 4;
 
 {$R *.lfm}
 
@@ -131,6 +140,7 @@ begin
        end;
     else ;
   end;
+  VChartControl1.DragMode:= CBAllowDrag.Checked and (VListBox1.ItemIndex=3);
   if VListBox1.ItemIndex>=0 then LabelStatus.Caption:= SL[VListBox1.ItemIndex];
   VChartControl1.RenderChart;
 end;
@@ -162,6 +172,11 @@ begin
   VChartControl1.CancelZoom;
 end;
 
+procedure TForm1.CBAllowDragChange(Sender: TObject);
+begin
+  VChartControl1.DragMode:= CBAllowDrag.Checked and (VListBox1.ItemIndex=3);
+end;
+
 procedure TForm1.CBBottomAxisChange(Sender: TObject);
 begin
   if CBBottomAxis.Checked then VChartControl1.BottomAxisHeight:=32
@@ -179,11 +194,6 @@ begin
   else VChartControl1.LeftAxisWidth:=0;
 end;
 
-procedure TForm1.ColorButton1Click(Sender: TObject);
-begin
-
-end;
-
 procedure TForm1.ColorButton1ColorChanged(Sender: TObject);
 begin
   VChartControl1.Color:=ColorButton1.ButtonColor;
@@ -195,9 +205,9 @@ var
   i: integer;
 begin
   SL:= TStringList.Create;
-  VChartControl1.Extent:=TDoubleRect.Create(-6.2832, -1.75, 6.2832, 2);
+  VChartControl1.Extent:=TDoubleRect.Create(-2*pi, 2, 3*pi, -2);
   SetLength(da, 50);
-  for i:=0 to high(da) do da[i]:= (200-Random(400))/150;
+  for i:=0 to high(da) do da[i]:= (250-Random(500))/150;
   SL.Add('Sin(x)');
   SL.Add('Cos(x)');
   SL.Add('Sin(x) & Cos(x)');
@@ -229,12 +239,6 @@ begin
   VChartControl1.RenderChart;
 end;
 
-procedure TForm1.VChartControl1AfterChartDraw(Sender: TObject;
-  ACanvas: TCanvas; const AxisRect, ImageRect: TRect);
-begin
-  //
-end;
-
 procedure TForm1.VChartControl1ChartDraw(Sender: TObject; C: TCanvas;
   const AxisRect, ImageRect: TRect);
 
@@ -242,18 +246,17 @@ var
   dx, xx: double;
   X, Y: integer;
   n: integer;
-  arp: array of TPoint;
 
-const pxl = 2;
+const pxl = 6;
 
 procedure DrawSin;
 var
   i: integer;
 begin
   C.Pen.Color:=clBlue;
-  n:= 1+ ImageRect.Width div pxl;
+  n:= 2+ ImageRect.Width div pxl;
   SetLength(arp, n);
-  X:=ImageRect.Left;
+  X:=ImageRect.Left-1;
   for i:=0 to n-1 do
   begin
     xx:=VChartControl1.ImageToGraphX(X);
@@ -269,9 +272,9 @@ var
   i: integer;
 begin
   C.Pen.Color:=clGreen;
-  n:= 1+ImageRect.Width div pxl;
+  n:= 2+ImageRect.Width div pxl;
   SetLength(arp, n);
-  X:=ImageRect.Left;
+  X:=ImageRect.Left-1;
   for i:=0 to n-1 do
   begin
     xx:=VChartControl1.ImageToGraphX(X);
@@ -302,6 +305,11 @@ begin
       xx+= dx;
     end;
     C.Polyline(arp);
+    if (VListBox1.ItemIndex=3) and VChartControl1.DragMode then
+    begin
+      C.Brush.Color:=C.Pen.Color;
+      for i:= 0 to n-1 do C.Rectangle(arp[i].x-GrabRadius,arp[i].y-GrabRadius, arp[i].x+succ(GrabRadius), arp[i].y+succ(GrabRadius));
+    end;
   end;
 end;
 
@@ -311,12 +319,17 @@ var
   k: integer;
 begin
   if cnt<1 then exit(aRange);
-  d:=intpower(10, Floor(log10(aRange/cnt)));
+  d:= intpower(10, Floor(log10(aRange/cnt)));
   k:=trunc(aRange/cnt/d);
   if k<2 then exit(d);
-  if k=2 then exit(d+d);
-  if k<8 then k:=5 else k:=10;
+  if k<4 then exit(d+d);
+  if k<7 then k:=5 else k:=10;
   Result:=k*d;
+end;
+
+function GetDigits(d: double): integer;
+begin
+  Result:= max(0, -floor(log10(d)));
 end;
 
 procedure DrawAxis;
@@ -341,12 +354,13 @@ begin
 
   //Left axis
 
-  n:= round(ImageRect.Height/ScaleX(120+trunc(sqrt(ImageRect.Height)), 96));
+  n:= round(0.9 + ImageRect.Height/ScaleX(150, 96));   //+trunc(sqrt(ImageRect.Height))
   if n>0 then
   begin
     dy:= CalcGridStep(VChartControl1.ZoomExtent.Height, n);
+    dy:=max(dy, 0.001);
+    digits:=GetDigits(dy);
     yy:= ceil(VChartControl1.ZoomExtent.Top/dy)*dy;
-    digits:=1- min(0, trunc(log10(dy)));
     while yy< VChartControl1.ZoomExtent.Bottom do
     begin
       Y1:= VChartControl1.GraphToImageY(yy);
@@ -380,13 +394,14 @@ begin
 
   //Bottom axis
   koeff:=pi;
-  n:= round(ImageRect.Width/ScaleX(130 + trunc(sqrt(ImageRect.Width)), 96));
+  n:= round(0.9 + ImageRect.Width/ScaleX(150 + trunc(sqrt(ImageRect.Width)), 96));
   if n>0 then
   begin
     dx:= CalcGridStep(VChartControl1.ZoomExtent.Width/koeff, n);
+    dx:=max(dx, 0.001);
+    digits:=GetDigits(dx);
     xx:= ceil(VChartControl1.ZoomExtent.Left/koeff/dx)*dx;
     yy:= VChartControl1.ZoomExtent.Right/pi;
-    digits:=max(abs(round(log10(dx))), 2);
     while xx< yy  do
     begin
       X1:= VChartControl1.GraphToImageX(xx*koeff);
@@ -435,16 +450,7 @@ begin
   C.Clipping:=false;
 end;
 
-procedure TForm1.VChartControl1CursorDraw(Sender: TObject; ACanvas: TCanvas;
-  ImageRect: TRect; isCursorA: boolean; X: integer);
-begin
-  if isCursorA then ACanvas.Pen.Color:=clRed else ACanvas.Pen.Color:=clBlue;
-  ACanvas.Pen.Mode:=pmNotXor;
-  ACanvas.Line(X, ImageRect.Top, X, ImageRect.Bottom);
-  ACanvas.Pen.Mode:=pmCopy;
-end;
-
-procedure TForm1.VChartControl1CursorMove(Sender: TObject; isCursorA: boolean);
+procedure TForm1.ShowCursorInfo;
 var
   s: string;
 begin
@@ -454,8 +460,78 @@ begin
   LabelStatus.Caption:=s;
 end;
 
+procedure TForm1.VChartControl1CursorAMove(Sender: TObject);
+begin
+  ShowCursorInfo;
+end;
+
+procedure TForm1.VChartControl1CursorBMove(Sender: TObject);
+begin
+  ShowCursorInfo;
+end;
+
+procedure TForm1.VChartControl1CursorsDraw(Sender: TObject; ACanvas: TCanvas;
+  ImageRect: TRect; aX, bX: integer);
+begin
+  aCanvas.Pen.Width:=1;
+  aCanvas.Pen.Mode:=pmNotXor;
+  if InRange(aX, ImageRect.Left, ImageRect.Right) then
+  begin
+    aCanvas.Pen.Color:=clRed;
+    aCanvas.Line(aX, ImageRect.Top, aX, ImageRect.Bottom);
+  end;
+  if InRange(bX, ImageRect.Left, ImageRect.Right) then
+  begin
+    aCanvas.Pen.Color:=clBlue;
+    aCanvas.Line(bX, ImageRect.Top, bX, ImageRect.Bottom);
+  end;
+  ACanvas.Pen.Mode:=pmCopy;
+end;
+
+procedure TForm1.VChartControl1GetDragPoint(Sender: TObject; X, Y: integer;
+  var N: integer);
+var
+  i: integer;
+  ie: boolean;
+  dx, dy, x0, y0: integer;
+begin
+  x0:=GrabRadius+1;
+  y0:=x0;
+  ie:= false;
+  N:=-1;
+  for i:=0 to High(arp) do
+  begin
+    dx:=abs(arp[i].x-X);
+    dy:=abs(arp[i].y-Y);
+    if (dx<x0) and (dy<y0) then
+    begin
+      x0:=dx;
+      y0:=dy;
+      ie:=true;
+      N:=i;
+    end
+    else if ie then break;
+  end;
+end;
+
+procedure TForm1.VChartControl1MovePoint(Sender: TObject; Y: integer; N: integer
+  );
+var
+  n0, k: integer;
+  yy: double;
+begin
+  n0:=Length(da)-1;
+  k:= trunc(n0*(VChartControl1.ZoomExtent.Left - VChartControl1.Extent.Left)/VChartControl1.Extent.Width);
+  yy:= da[N+k] + VChartControl1.ImageToGraphY(Y) - VChartControl1.ImageToGraphY(arp[N].y);
+  if InRange(yy, VChartControl1.ZoomExtent.Top, VChartControl1.ZoomExtent.Bottom) then
+  begin
+    da[N+k]:=yy;
+    VChartControl1.RenderChart;
+  end;
+end;
+
 procedure TForm1.VChartControl1ZoomRectDraw(Sender: TObject; ACanvas: TCanvas;
-  const ZoomRect: TRect);
+  ImageRect, ZoomRect: TRect);
 begin
   ACanvas.Pen.Color:=clWindowFrame;
   ACanvas.Pen.Width:=1;
