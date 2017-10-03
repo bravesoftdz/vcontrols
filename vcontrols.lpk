@@ -13,7 +13,7 @@
       </SearchPaths>
     </CompilerOptions>
     <License Value="Icons by icons8.com"/>
-    <Version Minor="4"/>
+    <Version Minor="5"/>
     <Files Count="3">
       <Item1>
         <Filename Value="vlistbox.pas"/>

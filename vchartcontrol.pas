@@ -17,11 +17,59 @@ const
   DefCursorMin = -1E10;
 
 type
- // TCursorType = (ctLeft, ctRight, ctAll);
+
   TVChartDraw = procedure(Sender: TObject; ACanvas: TCanvas; const AxisRect, ImageRect: TRect) of object;
-  TVChartZoomRectDraw = procedure(Sender: TObject; ACanvas: TCanvas; const ZoomRect: TRect) of object;
-  TVChartCursorDraw = procedure(Sender: TObject; ACanvas: TCanvas; ImageRect: TRect; isCursorA: boolean; X: integer) of object;
-  TVChartCursorMove = procedure(Sender: TObject; isCursorA: boolean) of object;
+  TVChartCursorsDraw = procedure(Sender: TObject; ACanvas: TCanvas; ImageRect: TRect; aX, bX: integer) of object;
+  TVChartZoomRectDraw = procedure(Sender: TObject; ACanvas: TCanvas; ImageRect, ZoomRect: TRect) of object;
+  TVChartGetDragPoint = procedure(Sender: TObject; X, Y: integer; var N: integer) of object;
+  TVChartMovePoint = procedure(Sender: TObject; Y: integer; N: integer) of object;
+ {
+  TVCustomDrawer  - общий предок
+  TVChartDrawer
+  TVCanvasDrawer
+  TVBitmapDrawer
+  TVPrintDrawer
+ }
+
+  { TVChartDrawer }
+  TVChartControl = class;
+
+  { TVCanvasChartDrawer }
+
+  TVCanvasChartDrawer = class (TComponent)
+  private
+    FCursorAColor: TColor;
+    FCursorBColor: TColor;
+    FLineWidth: integer;
+    procedure SetCursorAColor(AValue: TColor);
+    procedure SetCursorBColor(AValue: TColor);
+  protected
+    procedure Changed; virtual;
+    procedure DrawChart(aCanvas: TCanvas; aAxisRect, aImageRect: TRect); virtual; abstract;
+    procedure DrawCursor(aCanvas: TCanvas; ImageRect: TRect; isCursorA: boolean; X: integer); virtual; abstract;
+    procedure DrawCursors(aCanvas: TCanvas; ImageRect: TRect; aX, bX: integer); virtual; abstract;
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    property CursorAColor: TColor read FCursorAColor write SetCursorAColor;
+    property CursorBColor: TColor read FCursorBColor write SetCursorBColor;
+  end;
+
+  { TVScreenChartDrawer }
+
+  TVScreenChartDrawer = class (TVCanvasChartDrawer)
+  private
+    FChart: TVChartControl;
+  protected
+    procedure Changed; override;
+    procedure DrawCursors(aCanvas: TCanvas; ImageRect: TRect; aX, bX: integer); override;
+    procedure AfterDrawChart(aCanvas: TCanvas; aAxisRect, aImageRect: TRect);
+    procedure DrawZoomRect(aCanvas: TCanvas; ImageRect, ZoomRect: TRect);
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    property Chart: TVChartControl read FChart write FChart;
+  end;
 
   { TVChartControl }
 
@@ -29,10 +77,16 @@ type
   private
     FAllowCursorA: Boolean;
     FAllowCursorB: Boolean;
+    FChartDrawer: TVScreenChartDrawer;
+    FDragMode: boolean;
+    FDraggingPoint: integer;
     FOnAfterChartDraw: TVChartDraw;
     FOnChartDraw: TVChartDraw;
-    FOnCursorDraw: TVChartCursorDraw;
-    FOnCursorMove: TVChartCursorMove;
+    FOnCursorAMove: TNotifyEvent;
+    FOnCursorBMove: TNotifyEvent;
+    FOnCursorsDraw: TVChartCursorsDraw;
+    FOnGetDragPoint: TVChartGetDragPoint;
+    FOnMovePoint: TVChartMovePoint;
     FOnZoomRectDraw: TVChartZoomRectDraw;
     NeedRender: boolean;
     IsZoomRect: boolean;
@@ -58,12 +112,13 @@ type
     procedure Calculate;
     procedure DoDrawBuffer;
 
-    procedure DoSetCursor(isCursorA: boolean; X: Integer);
     procedure DoSetZoomExtent(aLeft, aTop, aWidth, aHeight: double);
     procedure OnChangeFont(Sender: TObject);
     procedure SetBottomAxisHeight(AValue: integer);
+    procedure SetChartDrawer(AValue: TVScreenChartDrawer);
     procedure SetCursorA(AValue: double);
     procedure SetCursorB(AValue: double);
+    procedure SetDragMode(AValue: boolean);
 
     procedure SetExtent(AValue: TDoubleRect);
     procedure SetImageCursorA(AValue: integer);
@@ -88,19 +143,25 @@ type
     procedure LMHScroll(var Msg: TLMHScroll); message LM_HSCROLL;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
 
-    procedure DoOnDrawZoomRect(aCanvas: TCanvas; r: TRect); virtual;
-    procedure DoDrawChart(aCanvas: TCanvas; r: TRect); virtual;
-    procedure DoAfterDrawChart(aCanvas: TCanvas; r: TRect); virtual;
-    procedure DoDrawCursor(isCursorA: boolean; X: integer); virtual;
-    procedure DoMoveCursor(isCursorA: boolean); virtual;
+    procedure DoDrawZoomRect(aCanvas: TCanvas; ir, zr: TRect); virtual;
+    procedure DoDrawChart(aCanvas: TCanvas; cr, ir: TRect); virtual;
+    procedure DoAfterDrawChart(aCanvas: TCanvas; cr, ir: TRect); virtual;
+    procedure DoDrawCursors(aCanvas: TCanvas; ir: TRect; aX, bX: integer); virtual;
+
+    procedure DoMoveCursorA; virtual;
+    procedure DoMoveCursorB; virtual;
+
+    procedure DoGetDragPoint(X, Y: integer; var N: integer); virtual;
+    procedure DoMovePoint(Y: integer; N: integer); virtual;
+
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
-    function GraphToImage(ap: TDoublePoint): TPoint;    //convert graph coords to screen coords
-    function GraphToImage(X, Y: double): TPoint;        //convert graph coords to screen coords
-    function GraphToImageX(X: double): integer; inline; //convert graph X coord to screen X coord
-    function GraphToImageY(Y: double): integer; inline; //convert graph Y coord to screen Y coord
+    function GraphToImage(ap: TDoublePoint): TPoint;     //convert graph coords to screen coords
+    function GraphToImage(X, Y: double): TPoint;         //convert graph coords to screen coords
+    function GraphToImageX(X: double): integer; inline;  //convert graph X coord to screen X coord
+    function GraphToImageY(Y: double): integer; inline;  //convert graph Y coord to screen Y coord
 
     function ImageToGraph(pt: TPoint): TDoublePoint;     //convert screen coords to graph coords
     function ImageToGraph(X, Y: integer): TDoublePoint;  //convert screen coords to graph coords
@@ -119,16 +180,22 @@ type
     property ImageCursorB: integer read FImageCursorB write SetImageCursorB;
     property CursorA: double read FCursorA write SetCursorA;
     property CursorB: double read FCursorB write SetCursorB;
+    property DragMode: boolean read FDragMode write SetDragMode;
   published
+    property ChartDrawer: TVScreenChartDrawer read FChartDrawer write SetChartDrawer;
     property AllowZoom: Boolean read FAllowZoom write FAllowZoom default true;
     property AllowCursorA: Boolean read FAllowCursorA write FAllowCursorA default true;
     property AllowCursorB: Boolean read FAllowCursorB write FAllowCursorB default true;
 //    property Navigator: Boolean read FNavigator write SetNavigator default true;
+
     property OnChartDraw: TVChartDraw read FOnChartDraw write FOnChartDraw;
     property OnAfterChartDraw: TVChartDraw read FOnAfterChartDraw write FOnAfterChartDraw;
+    property OnCursorAMove: TNotifyEvent read FOnCursorAMove write FOnCursorAMove;
+    property OnCursorBMove: TNotifyEvent read FOnCursorBMove write FOnCursorBMove;
+    property OnCursorsDraw: TVChartCursorsDraw read FOnCursorsDraw write FOnCursorsDraw;
     property OnZoomRectDraw: TVChartZoomRectDraw read FOnZoomRectDraw write FOnZoomRectDraw;
-    property OnCursorDraw: TVChartCursorDraw read FOnCursorDraw write FOnCursorDraw;
-    property OnCursorMove: TVChartCursorMove read FOnCursorMove write FOnCursorMove;
+    property OnGetDragPoint: TVChartGetDragPoint read FOnGetDragPoint write FOnGetDragPoint;
+    property OnMovePoint: TVChartMovePoint read FOnMovePoint write FOnMovePoint;
 
     property LeftAxisWidth: integer read FLeftAxisWidth write SetLeftAxisWidth;
     property BottomAxisHeight: integer read FBottomAxisHeight write SetBottomAxisHeight;
@@ -170,6 +237,92 @@ begin
   Result := Trunc(EnsureRange(A, -MaxInt, MaxInt));
 end;
 
+{ TVScreenChartDrawer }
+
+procedure TVScreenChartDrawer.Changed;
+begin
+  FChart.RenderChart;
+end;
+
+procedure TVScreenChartDrawer.DrawCursors(aCanvas: TCanvas; ImageRect: TRect;
+  aX, bX: integer);
+begin
+  aCanvas.Pen.Width:=FLineWidth;
+  aCanvas.Pen.Mode:=pmNotXor;
+  if InRange(aX, ImageRect.Left, ImageRect.Right) then
+  begin
+    aCanvas.Pen.Color:=FCursorAColor;
+    aCanvas.Line(aX, ImageRect.Top, aX, ImageRect.Bottom);
+  end;
+  if InRange(bX, ImageRect.Left, ImageRect.Right) then
+  begin
+    aCanvas.Pen.Color:=FCursorBColor;
+    aCanvas.Line(bX, ImageRect.Top, bX, ImageRect.Bottom);
+  end;
+  ACanvas.Pen.Mode:=pmCopy;
+end;
+
+procedure TVScreenChartDrawer.AfterDrawChart(aCanvas: TCanvas; aAxisRect,
+  aImageRect: TRect);
+begin
+  //
+end;
+
+procedure TVScreenChartDrawer.DrawZoomRect(aCanvas: TCanvas; ImageRect,
+  ZoomRect: TRect);
+begin
+  ACanvas.Pen.Color:=clWindowFrame;
+  ACanvas.Pen.Width:=FLineWidth;
+  ACanvas.Frame(ZoomRect);
+end;
+
+constructor TVScreenChartDrawer.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FLineWidth:=ScaleX(1, 96);
+end;
+
+destructor TVScreenChartDrawer.Destroy;
+begin
+  inherited Destroy;
+end;
+
+{ TVCanvasChartDrawer }
+
+procedure TVCanvasChartDrawer.SetCursorAColor(AValue: TColor);
+begin
+  if FCursorAColor=AValue then Exit;
+  FCursorAColor:=AValue;
+  Changed;
+end;
+
+procedure TVCanvasChartDrawer.SetCursorBColor(AValue: TColor);
+begin
+  if FCursorBColor=AValue then Exit;
+  FCursorBColor:=AValue;
+  Changed;
+end;
+
+procedure TVCanvasChartDrawer.Changed;
+begin
+  //
+end;
+
+constructor TVCanvasChartDrawer.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FCursorAColor:=clRed;
+  FCursorBColor:=clBlue;
+  FLineWidth:=1;
+end;
+
+destructor TVCanvasChartDrawer.Destroy;
+begin
+
+  inherited Destroy;
+end;
+
+
 { TVChartControl }
 
 procedure TVChartControl.SetExtent(AValue: TDoubleRect);
@@ -185,18 +338,18 @@ procedure TVChartControl.SetImageCursorA(AValue: integer);
 begin
   if FImageCursorA=AValue then Exit;
   FImageCursorA:=AValue;
-  FCursorA:=ImageToGraphX(AValue);
-  Changed;
-  Invalidate;
+  if AValue<FImageRect.Left then FCursorA:=DefCursorMin else FCursorA:=ImageToGraphX(AValue);
+  DoDrawBuffer;
+  DoMoveCursorA;
 end;
 
 procedure TVChartControl.SetImageCursorB(AValue: integer);
 begin
   if FImageCursorB=AValue then Exit;
   FImageCursorB:=AValue;
-  FCursorB:=ImageToGraphX(AValue);
-  Changed;
-  Invalidate;
+  if AValue<FImageRect.Left then FCursorB:=DefCursorMin else FCursorB:=ImageToGraphX(AValue);
+  DoDrawBuffer;
+  DoMoveCursorB;
 end;
 
 procedure TVChartControl.SetLeftAxisWidth(AValue: integer);
@@ -256,20 +409,34 @@ end;
 procedure TVChartControl.DoDrawBuffer;
 begin
   Canvas.Draw(0,0, FBitmap);
-  if (FImageCursorA>=FImageRect.Left) and (FImageCursorA<FImageRect.Right) then DoDrawCursor(true, FImageCursorA);
-  if (FImageCursorB>=FImageRect.Left) and (FImageCursorB<FImageRect.Right) then DoDrawCursor(false, FImageCursorB);
-  DoAfterDrawChart(Canvas, ClientRect);
-  if IsZoomRect then DoOnDrawZoomRect(Canvas, FZoomRect);
+  DoDrawCursors(Canvas, FImageRect, FImageCursorA, FImageCursorB);
+  DoAfterDrawChart(Canvas, ClientRect, FImageRect);
+  if IsZoomRect then DoDrawZoomRect(Canvas, FImageRect, FZoomRect);
 end;
 
-procedure TVChartControl.DoDrawChart(aCanvas: TCanvas; r: TRect);
+procedure TVChartControl.DoDrawZoomRect(aCanvas: TCanvas; ir, zr: TRect);
 begin
-  if Assigned(FOnChartDraw) then FOnChartDraw(self, ACanvas, r, FImageRect);
+  if Assigned(FChartDrawer) then FChartDrawer.DrawZoomRect(aCanvas, ir, zr)
+  else if Assigned(FOnZoomRectDraw) then FOnZoomRectDraw(self, aCanvas, ir, zr);
 end;
 
-procedure TVChartControl.DoAfterDrawChart(aCanvas: TCanvas; r: TRect);
+procedure TVChartControl.DoDrawChart(aCanvas: TCanvas; cr, ir: TRect);
 begin
-  if Assigned(FOnAfterChartDraw) then FOnAfterChartDraw(self, ACanvas, r, FImageRect);
+  if Assigned(FChartDrawer) then FChartDrawer.DrawChart(ACanvas, cr, ir)
+  else if Assigned(FOnChartDraw) then FOnChartDraw(self, ACanvas, cr, ir);
+end;
+
+procedure TVChartControl.DoAfterDrawChart(aCanvas: TCanvas; cr, ir: TRect);
+begin
+  if Assigned(FChartDrawer) then FChartDrawer.AfterDrawChart(ACanvas, cr, ir)
+  else if Assigned(FOnAfterChartDraw) then FOnAfterChartDraw(self, ACanvas, cr, ir);
+end;
+
+procedure TVChartControl.DoDrawCursors(aCanvas: TCanvas; ir: TRect; aX,
+  bX: integer);
+begin
+  if Assigned(FChartDrawer) then FChartDrawer.DrawCursors(aCanvas, ir, aX, bX)
+  else if Assigned(FOnCursorsDraw) then FOnCursorsDraw(self, aCanvas, ir, aX, bX);
 end;
 
 procedure TVChartControl.Paint;
@@ -286,7 +453,7 @@ begin
     FBitmap.Canvas.Font.Assign(Font);
     FBitmap.Canvas.Brush.Color:= Color;
     FBitmap.Canvas.FillRect(r);
-    if (FImageRect.Width>1) and (FImageRect.Height>1) then DoDrawChart(FBitmap.Canvas, r);
+    if (FImageRect.Width>1) and (FImageRect.Height>1) then DoDrawChart(FBitmap.Canvas, r, FImageRect);
     NeedRender:=false;
   end;
   DoDrawBuffer;
@@ -329,7 +496,6 @@ end;
 
 function TVChartControl.GraphToImageY(Y: double): integer;
 begin
- // Result:= RoundChecked(FImageRect.Top+ (Y -FZoomExtent.Top)*FScale.Y);
   Result:= RoundChecked(FImageRect.Top+ (FZoomExtent.Bottom -Y)*FScale.Y);
 end;
 
@@ -425,17 +591,33 @@ begin
   RenderChart;
 end;
 
+procedure TVChartControl.SetChartDrawer(AValue: TVScreenChartDrawer);
+begin
+  if FChartDrawer=AValue then Exit;
+  FChartDrawer:=AValue;
+  RenderChart;
+end;
+
 procedure TVChartControl.SetCursorA(AValue: double);
 begin
   if FCursorA=AValue then Exit;
   FCursorA:=AValue;
-  RenderChart;
+  FImageCursorA:=GraphToImageX(AValue);
+  DoDrawBuffer;
 end;
 
 procedure TVChartControl.SetCursorB(AValue: double);
 begin
   if FCursorB=AValue then Exit;
   FCursorB:=AValue;
+  FImageCursorB:=GraphToImageX(AValue);
+  DoDrawBuffer;
+end;
+
+procedure TVChartControl.SetDragMode(AValue: boolean);
+begin
+  if FDragMode=AValue then Exit;
+  FDragMode:=AValue;
   RenderChart;
 end;
 
@@ -456,37 +638,34 @@ begin
     if IsZoomRect then FZoomRect.Create(FSavedMouse, 0, 0);
     exit;
   end;
-  if FAllowCursorA and (Shift=[ssLeft]) then DoSetCursor(true, X) //cursor A
-  else if FAllowCursorB and (Shift=[ssRight]) then DoSetCursor(false, X); //cursor B
-end;
-
-procedure TVChartControl.DoSetCursor(isCursorA: boolean; X: Integer);
-var
-  d: double;
-begin
-  if X<FImageRect.Left then d:=DefCursorMin else d:= ImageToGraphX(X);
-  if isCursorA then
+  if FDragMode then
   begin
-    FImageCursorA:=X;
-    FCursorA:=d;
-  end
-  else
-  begin
-    FImageCursorB:=X;
-    FCursorB:=d;
+    if Shift = [ssLeft] then DoGetDragPoint(X, Y, FDraggingPoint);
+    exit;
   end;
-  DoMoveCursor(isCursorA);
-  DoDrawBuffer;
+  if FAllowCursorA and (Shift=[ssLeft]) then SetImageCursorA(X) //cursor A
+  else if FAllowCursorB and (Shift=[ssRight]) then SetImageCursorB(X); //cursor B
 end;
 
-procedure TVChartControl.DoDrawCursor(isCursorA: boolean; X: integer);
+procedure TVChartControl.DoMoveCursorA;
 begin
-  if Assigned(FOnCursorDraw) then FOnCursorDraw(self, Canvas, FImageRect, isCursorA, X);
+  if Assigned(FOnCursorAMove) then FOnCursorAMove(self);
 end;
 
-procedure TVChartControl.DoMoveCursor(isCursorA: boolean);
+procedure TVChartControl.DoMoveCursorB;
 begin
-  if Assigned(FOnCursorMove) then FOnCursorMove(self, isCursorA);
+  if Assigned(FOnCursorBMove) then FOnCursorBMove(self);
+end;
+
+procedure TVChartControl.DoGetDragPoint(X, Y: integer; var N: integer);
+begin
+  N:=-1;
+  if Assigned(FOnGetDragPoint) then FOnGetDragPoint(self, X, Y, N);
+end;
+
+procedure TVChartControl.DoMovePoint(Y: integer; N: integer);
+begin
+  if Assigned(FOnMovePoint) then FOnMovePoint(self, Y, N);
 end;
 
 procedure TVChartControl.MouseUp(Button: TMouseButton; Shift: TShiftState; X,
@@ -495,6 +674,7 @@ var
   dp: TDoubleRect;
 begin
   Cursor:=crDefault;
+  FDraggingPoint:=-1;
   inherited MouseUp(Button, Shift, X, Y);
   if IsZoomRect then
   begin
@@ -511,11 +691,6 @@ begin
       else DoDrawBuffer;
     end;
   end;
-end;
-
-procedure TVChartControl.DoOnDrawZoomRect(aCanvas: TCanvas; r: TRect);
-begin
-  if Assigned(FOnZoomRectDraw) then FOnZoomRectDraw(self, aCanvas, r);
 end;
 
 procedure TVChartControl.MouseMove(Shift: TShiftState; X, Y: Integer);
@@ -538,8 +713,13 @@ begin
     DoDrawBuffer;
     exit;
   end;
-  if FAllowCursorA and (Shift=[ssLeft]) then DoSetCursor(true, X) //cursor A
-  else if FAllowCursorB and (Shift=[ssRight]) then DoSetCursor(false, X); //cursor B
+  if FDragMode then
+  begin  //drag point
+    if FDraggingPoint>=0 then DoMovePoint(Y, FDraggingPoint);
+    exit;
+  end;
+  if FAllowCursorA and (Shift=[ssLeft]) then SetImageCursorA(X) //cursor A
+  else if FAllowCursorB and (Shift=[ssRight]) then SetImageCursorB(X); //cursor B
 end;
 
 procedure TVChartControl.UpdateFromVertScrollbarMsg(const Msg: TLMVScroll);
@@ -638,6 +818,8 @@ end;
 constructor TVChartControl.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
+  FDragMode:= false;
+  FDraggingPoint:=-1;
   FBitmap:=TBitmap.Create;
   IsZoomRect:=false;
   FBottomAxisHeight:=0;
@@ -645,7 +827,7 @@ begin
   FAllowZoom:=true;
   FAllowCursorA:=true;
   FAllowCursorB:=true;
-  FExtent.Create(-1,-1, 1, 1);
+  FExtent.Create(-1, 1, 1, -1);
   FZoomExtent:=FExtent;
   ControlStyle:= ControlStyle+[csOpaque]-[csTripleClicks];
   Color:= clWhite;
